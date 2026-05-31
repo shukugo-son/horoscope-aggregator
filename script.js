@@ -128,15 +128,21 @@ function buildCard(r, index) {
         r.luckyNumber ? `<div class="lucky-row"><span class="lucky-label">🔢 ラッキーナンバー</span><span class="lucky-val">${escapeHtml(String(r.luckyNumber))}</span></div>` : '',
     ].filter(Boolean).join('');
 
+    const rankHtml = r.rank != null
+        ? `<div class="rank-wrap" style="--rank-color:${rankColor}">
+               <span class="rank-num">${r.rank}</span><span class="rank-unit">位</span>
+               <span class="rank-total">/ ${r.total}</span>
+           </div>`
+        : `<div class="rank-wrap rank-none">
+               <span class="rank-none-label">🌐 海外ソース（順位なし）</span>
+           </div>`;
+
     card.innerHTML = `
         <div class="card-top">
             <span class="source-name">${escapeHtml(r.source)}</span>
             <a class="source-link" href="${escapeHtml(r.url)}" target="_blank" rel="noopener">サイトを見る →</a>
         </div>
-        <div class="rank-wrap" style="--rank-color:${rankColor}">
-            <span class="rank-num">${r.rank}</span><span class="rank-unit">位</span>
-            <span class="rank-total">/ ${r.total}</span>
-        </div>
+        ${rankHtml}
         ${luckyHtml ? `<div class="lucky-block">${luckyHtml}</div>` : '<p class="no-lucky">ラッキー情報なし</p>'}
     `;
     return card;

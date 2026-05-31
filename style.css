@@ -328,6 +328,20 @@ body {
     font-style: italic;
 }
 
+/* 順位なし（海外ソース）カード */
+.rank-none {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.rank-none-label {
+    font-size: .9rem;
+    color: var(--text-muted);
+    letter-spacing: .02em;
+}
+
 /* ================================================
    Footer
    ================================================ */
