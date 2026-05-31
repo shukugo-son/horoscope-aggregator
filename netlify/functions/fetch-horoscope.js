@@ -222,21 +222,25 @@ async function fetchLine(signId) {
 
 // ────────────────────────────────────────────
 // うらなえる
-// ランキングページのリンク出現順 = 順位
-// URL パターン: /fortune-luck/dailyranking/{signId}/
+// メインページのリンク出現順 = 順位
+// 個別ページ: ラッキーナンバー / ラッキーカラー
+// 形式: 「ラッキーナンバー4ラッキーカラーオレンジ」（区切り文字なし）
 // ────────────────────────────────────────────
 async function fetchUnkoi(signId) {
-    const res = await axios.get('https://unkoi.com/fortune-luck/dailyranking', {
-        timeout: 10000,
-        headers: HEADERS,
-    });
+    const signUrl = `https://unkoi.com/fortune-luck/dailyranking/${signId}/`;
 
-    const $ = cheerio.load(res.data);
+    const [mainRes, signRes] = await Promise.all([
+        axios.get('https://unkoi.com/fortune-luck/dailyranking', { timeout: 10000, headers: HEADERS }),
+        axios.get(signUrl, { timeout: 10000, headers: HEADERS }),
+    ]);
+
+    // メインページのリンク順で順位を決定
+    const $main = cheerio.load(mainRes.data);
     const seen    = new Set();
     const ordered = [];
 
-    $('a[href*="/fortune-luck/dailyranking/"]').each((_, el) => {
-        const href = ($(el).attr('href') || '').replace(/\/$/, '');
+    $main('a[href*="/fortune-luck/dailyranking/"]').each((_, el) => {
+        const href = ($main(el).attr('href') || '').replace(/\/$/, '');
         const m = href.match(/\/fortune-luck\/dailyranking\/([a-z]+)$/);
         if (m && !seen.has(m[1])) {
             seen.add(m[1]);
@@ -247,12 +251,21 @@ async function fetchUnkoi(signId) {
     const rank = ordered.indexOf(signId) + 1;
     if (rank === 0) return null;
 
+    // 個別ページからラッキー情報を取得
+    const $sign = cheerio.load(signRes.data);
+    const text = $sign('body').text().replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ');
+
+    // 形式: 「ラッキーナンバー4ラッキーカラーオレンジ 恋愛運...」
+    const numM   = text.match(/ラッキーナンバー(.+?)ラッキーカラー/);
+    const colorM = text.match(/ラッキーカラー(.+?)(?=恋愛運|金運|仕事運|\s{2})/);
+
     return {
         source: 'うらなえる',
-        url: `https://unkoi.com/fortune-luck/dailyranking/${signId}/`,
+        url: signUrl,
         rank,
         total: 12,
-        luckyColor: null,
-        luckyItem:  null,
+        luckyColor:  colorM?.[1]?.trim() || null,
+        luckyNumber: numM?.[1]?.trim()   || null,
+        luckyItem:   null,
     };
 }

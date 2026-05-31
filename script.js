@@ -123,8 +123,9 @@ function buildCard(r, index) {
     const rankColor = rankToColor(r.rank);
 
     const luckyHtml = [
-        r.luckyColor ? `<div class="lucky-row"><span class="lucky-label">🎨 ラッキーカラー</span><span class="lucky-val">${escapeHtml(r.luckyColor)}</span></div>` : '',
-        r.luckyItem  ? `<div class="lucky-row"><span class="lucky-label">✨ ラッキーアイテム</span><span class="lucky-val">${escapeHtml(r.luckyItem)}</span></div>` : '',
+        r.luckyColor  ? `<div class="lucky-row"><span class="lucky-label">🎨 ラッキーカラー</span><span class="lucky-val">${escapeHtml(r.luckyColor)}</span></div>` : '',
+        r.luckyItem   ? `<div class="lucky-row"><span class="lucky-label">✨ ラッキーアイテム</span><span class="lucky-val">${escapeHtml(r.luckyItem)}</span></div>` : '',
+        r.luckyNumber ? `<div class="lucky-row"><span class="lucky-label">🔢 ラッキーナンバー</span><span class="lucky-val">${escapeHtml(String(r.luckyNumber))}</span></div>` : '',
     ].filter(Boolean).join('');
 
     card.innerHTML = `

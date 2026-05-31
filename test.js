@@ -34,9 +34,10 @@ async function testSign(sign) {
     console.log(`✅ ${data.signJa}  ${data.date}\n`);
     for (const r of data.results) {
         console.log(`  📌 ${r.source}`);
-        console.log(`     順位         : ${r.rank}位 / ${r.total}`);
-        console.log(`     ラッキーカラー: ${r.luckyColor ?? '—'}`);
-        console.log(`     ラッキーアイテム: ${r.luckyItem ?? '—'}`);
+        console.log(`     順位           : ${r.rank}位 / ${r.total}`);
+        console.log(`     ラッキーカラー  : ${r.luckyColor  ?? '—'}`);
+        console.log(`     ラッキーアイテム: ${r.luckyItem   ?? '—'}`);
+        console.log(`     ラッキーナンバー: ${r.luckyNumber ?? '—'}`);
         console.log(`     URL           : ${r.url}`);
         console.log();
     }
