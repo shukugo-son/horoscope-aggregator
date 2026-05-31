@@ -6,7 +6,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// 星座ID → 日本語名（複数表記に対応）
 const SIGN_JA = {
     aries:       ['牡羊座', 'おひつじ座'],
     taurus:      ['牡牛座', 'おうし座'],
@@ -59,6 +58,11 @@ exports.handler = async (event) => {
         .filter(r => r.status === 'fulfilled' && r.value)
         .map(r => r.value);
 
+    // デバッグ情報をログ出力
+    console.log('RSK:', rsk.status, rsk.status === 'rejected' ? rsk.reason?.message : rsk.value);
+    console.log('jprime:', jprime.status, jprime.status === 'rejected' ? jprime.reason?.message : jprime.value);
+    console.log('unkoi:', unkoi.status, unkoi.status === 'rejected' ? unkoi.reason?.message : unkoi.value);
+
     return {
         statusCode: 200,
         headers: cors,
@@ -67,7 +71,9 @@ exports.handler = async (event) => {
 };
 
 // ────────────────────────────────────────────
-// RSK山陽放送（1〜3位: /horoscope/、4〜12位: /horoscope/2nd.php）
+// RSK山陽放送
+// 形式: 第X位 [星座名] ... 【ラッキーカラー】VALUE ... 【ラッキーアイテム】VALUE
+// 1〜3位: /horoscope/  /  4〜12位: /horoscope/2nd.php
 // ────────────────────────────────────────────
 async function fetchRSK(signId) {
     const [r1, r2] = await Promise.all([
@@ -94,31 +100,43 @@ async function fetchRSK(signId) {
 
 function parseRSKPage(html, out) {
     const $ = cheerio.load(html);
-    // 改行・連続スペースを1スペースに正規化したテキスト全体を使用
-    const text = $('body').text().replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ');
+    const rawText = $('body').text();
 
-    for (const [signId, names] of Object.entries(SIGN_JA)) {
-        if (out[signId]) continue;
-        for (const name of names) {
-            const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const re = new RegExp(
-                `第(\\d+)位.{0,100}${esc}.{0,500}?ラッキーカラー[：:：]\\s*([^\\s　]{1,20}).{0,300}?ラッキーアイテム[：:：]\\s*([^\\s　、。]{1,30})`
-            );
-            const m = text.match(re);
-            if (m) {
-                out[signId] = {
-                    rank:       parseInt(m[1]),
-                    luckyColor: m[2].trim(),
-                    luckyItem:  m[3].trim(),
-                };
+    // 「第X位」でテキストをブロック分割して各ブロックをパース
+    const blocks = rawText.split(/(?=第\d+位)/);
+
+    for (const block of blocks) {
+        const rankM = block.match(/^第(\d+)位/);
+        if (!rankM) continue;
+        const rank = parseInt(rankM[1]);
+
+        // どの星座かを特定
+        let foundSignId = null;
+        for (const [signId, names] of Object.entries(SIGN_JA)) {
+            if (out[signId]) continue;
+            if (names.some(n => block.includes(n))) {
+                foundSignId = signId;
                 break;
             }
         }
+        if (!foundSignId) continue;
+
+        // ラッキーカラー・アイテムを抽出（実際の形式: 【ラッキーカラー】VALUE）
+        const colorM = block.match(/【ラッキーカラー】([^\s【】\n]{1,20})/);
+        const itemM  = block.match(/【ラッキーアイテム】([^\s【】\n]{1,30})/);
+
+        out[foundSignId] = {
+            rank,
+            luckyColor: colorM?.[1]?.trim() || null,
+            luckyItem:  itemM?.[1]?.trim()  || null,
+        };
     }
 }
 
 // ────────────────────────────────────────────
-// 週刊女性PRIME（各星座ページ /list/uranai/{sign}）
+// 週刊女性PRIME
+// 形式: 順位：8位 05月31日(日) / ラッキーアイテム：VALUE / ラッキーカラー：VALUE
+// URL: /list/uranai/{signId}（英語星座名をそのまま使用）
 // ────────────────────────────────────────────
 async function fetchJprime(signId) {
     const url = `https://www.jprime.jp/list/uranai/${signId}`;
@@ -127,15 +145,12 @@ async function fetchJprime(signId) {
     const $ = cheerio.load(res.data);
     const text = $('body').text().replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ');
 
-    const rankM =
-        text.match(/(\d+)\s*位\s*[\/／]\s*12/) ||
-        text.match(/順位[：:\s]+第?\s*(\d+)\s*位/) ||
-        text.match(/第\s*(\d+)\s*位/);
-
+    // 「順位：8位」または「順位 8位」のパターン（日付がついても無視）
+    const rankM = text.match(/順位[：:\s]+(\d+)\s*位/);
     if (!rankM) return null;
 
-    const colorM = text.match(/ラッキーカラー[：:\s]+([^\s　、。]{1,20})/);
-    const itemM  = text.match(/ラッキーアイテム[：:\s]+([^\s　、。]{1,30})/);
+    const colorM = text.match(/ラッキーカラー[：:\s]+([^\s、。]{1,20})/);
+    const itemM  = text.match(/ラッキーアイテム[：:\s]+([^\s、。]{1,30})/);
 
     return {
         source: '週刊女性PRIME',
@@ -148,7 +163,9 @@ async function fetchJprime(signId) {
 }
 
 // ────────────────────────────────────────────
-// うらなえる（全星座ランキングページ）
+// うらなえる
+// ランキングページのリンク出現順 = 順位
+// URL パターン: /fortune-luck/dailyranking/{signId}/
 // ────────────────────────────────────────────
 async function fetchUnkoi(signId) {
     const res = await axios.get('https://unkoi.com/fortune-luck/dailyranking', {
@@ -157,7 +174,7 @@ async function fetchUnkoi(signId) {
     });
 
     const $ = cheerio.load(res.data);
-    const seen = new Set();
+    const seen    = new Set();
     const ordered = [];
 
     $('a[href*="/fortune-luck/dailyranking/"]').each((_, el) => {

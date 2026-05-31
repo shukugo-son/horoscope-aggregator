@@ -87,12 +87,16 @@ async function fetchHoroscope(signId) {
 
     try {
         const res = await fetch(`${API}?sign=${encodeURIComponent(signId)}`);
+        if (res.status === 404) {
+            setStatus('⚠ Netlify Functions が動いていません。ローカルでは「netlify dev」で起動するか、Netlify にデプロイして使用してください。', true);
+            return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderResults(data);
     } catch (err) {
         console.error(err);
-        setStatus('占いサイトへの接続に失敗しました。Netlify にデプロイして実行してください。', true);
+        setStatus('⚠ サーバーへの接続に失敗しました。「netlify dev」で起動するか、Netlify にデプロイして使用してください。', true);
     } finally {
         setLoading(false);
     }
