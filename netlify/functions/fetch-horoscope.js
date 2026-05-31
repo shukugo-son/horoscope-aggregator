@@ -135,7 +135,8 @@ function parseRSKPage(html, out) {
 
 // ────────────────────────────────────────────
 // 週刊女性PRIME
-// 形式: 順位：8位 05月31日(日) / ラッキーアイテム：VALUE / ラッキーカラー：VALUE
+// 形式: ページ上部に "8位" のみ（ラベルなし）、その直後に星座名
+//       ラッキーアイテム：VALUE / ラッキーカラー：VALUE
 // URL: /list/uranai/{signId}（英語星座名をそのまま使用）
 // ────────────────────────────────────────────
 async function fetchJprime(signId) {
@@ -145,8 +146,18 @@ async function fetchJprime(signId) {
     const $ = cheerio.load(res.data);
     const text = $('body').text().replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ');
 
-    // 「順位：8位」または「順位 8位」のパターン（日付がついても無視）
-    const rankM = text.match(/順位[：:\s]+(\d+)\s*位/);
+    // 「順位：8位」形式（別サイト流用時のフォールバック）
+    let rankM = text.match(/順位[：:\s]+(\d{1,2})\s*位/);
+
+    // ページ上部の「8位」（ラベルなし）を星座名の近傍で探す
+    if (!rankM) {
+        for (const name of SIGN_JA[signId]) {
+            const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const m = text.match(new RegExp(`([1-9]|1[0-2])位.{0,60}?${esc}|${esc}.{0,60}?([1-9]|1[0-2])位`));
+            if (m) { rankM = [null, m[1] || m[2]]; break; }
+        }
+    }
+
     if (!rankM) return null;
 
     const colorM = text.match(/ラッキーカラー[：:\s]+([^\s、。]{1,20})/);
