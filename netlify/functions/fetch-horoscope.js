@@ -1,6 +1,6 @@
 /**
  * Netlify Function - 複数占いサイトから星座運勢を取得
- * ソース: RSK山陽放送 / 週刊女性PRIME / うらなえる
+ * ソース: RSK山陽放送 / 週刊女性PRIME / LINE占い / うらなえる
  */
 
 const axios = require('axios');
@@ -48,20 +48,19 @@ exports.handler = async (event) => {
     const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
     const dateStr = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
 
-    const [rsk, jprime, unkoi] = await Promise.allSettled([
+    const [rsk, jprime, line, unkoi] = await Promise.allSettled([
         fetchRSK(sign),
         fetchJprime(sign),
+        fetchLine(sign),
         fetchUnkoi(sign),
     ]);
 
-    const results = [rsk, jprime, unkoi]
+    const results = [rsk, jprime, line, unkoi]
         .filter(r => r.status === 'fulfilled' && r.value)
         .map(r => r.value);
 
-    // デバッグ情報をログ出力
-    console.log('RSK:', rsk.status, rsk.status === 'rejected' ? rsk.reason?.message : rsk.value);
-    console.log('jprime:', jprime.status, jprime.status === 'rejected' ? jprime.reason?.message : jprime.value);
-    console.log('unkoi:', unkoi.status, unkoi.status === 'rejected' ? unkoi.reason?.message : unkoi.value);
+    // 順位の高い順（1位が先頭）にソート
+    results.sort((a, b) => a.rank - b.rank);
 
     return {
         statusCode: 200,
@@ -168,6 +167,54 @@ async function fetchJprime(signId) {
         url,
         rank:       parseInt(rankM[1]),
         total:      12,
+        luckyColor: colorM?.[1]?.trim() || null,
+        luckyItem:  itemM?.[1]?.trim()  || null,
+    };
+}
+
+// ────────────────────────────────────────────
+// LINE占い
+// メインページのリンク出現順 = 順位
+// 個別ページ: ラッキーアイテム / ラッキーカラー
+// URL パターン: /horoscope/{signId}/
+// ────────────────────────────────────────────
+async function fetchLine(signId) {
+    const [mainRes, signRes] = await Promise.all([
+        axios.get('https://fortune.line.me/horoscope/', { timeout: 10000, headers: HEADERS }),
+        axios.get(`https://fortune.line.me/horoscope/${signId}/`, { timeout: 10000, headers: HEADERS }),
+    ]);
+
+    // メインページのリンク順で順位を決定
+    const $main = cheerio.load(mainRes.data);
+    const seen = new Set();
+    const ordered = [];
+
+    $main('a[href*="/horoscope/"]').each((_, el) => {
+        const href = ($main(el).attr('href') || '').replace(/\/$/, '');
+        const m = href.match(/\/horoscope\/([a-z]+)$/);
+        // "horoscope" そのものや無効なIDを除外
+        if (m && m[1] !== 'horoscope' && SIGN_JA[m[1]] && !seen.has(m[1])) {
+            seen.add(m[1]);
+            ordered.push(m[1]);
+        }
+    });
+
+    const rank = ordered.indexOf(signId) + 1;
+    if (rank === 0) return null;
+
+    // 個別ページからラッキー情報を取得
+    // LINE占いは区切り文字なし: 「ラッキーアイテム削りたての鉛筆ラッキーカラー藤色総合運...」
+    const $sign = cheerio.load(signRes.data);
+    const text = $sign('body').text().replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ');
+
+    const itemM  = text.match(/ラッキーアイテム(.+?)(?=ラッキーカラー|総合運|恋愛運)/);
+    const colorM = text.match(/ラッキーカラー(.+?)(?=総合運|恋愛運|金運|仕事運)/);
+
+    return {
+        source: 'LINE占い',
+        url: `https://fortune.line.me/horoscope/${signId}/`,
+        rank,
+        total: 12,
         luckyColor: colorM?.[1]?.trim() || null,
         luckyItem:  itemM?.[1]?.trim()  || null,
     };
