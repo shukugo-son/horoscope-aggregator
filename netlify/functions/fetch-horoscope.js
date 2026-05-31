@@ -225,35 +225,49 @@ async function fetchUnkoi(signId) {
 
 // ────────────────────────────────────────────
 // anna (アンナ)
-// タグページから最新の1-3位・4-12位記事を取得してパース
-// 形式: 第X位：星座名 ... ラッキーカラー：VALUE
+// 「★明日のラッキー星座は？【X月X日】」= その日に公開、翌日の運勢
+// タイトルの日付が「今日」の記事 → 明日の運勢 → スキップ
+// タイトルの日付が「昨日」の記事 → 今日の運勢 → 使用
 // ────────────────────────────────────────────
 async function fetchAnna(signId) {
-    // タグページから最新記事URLを2件取得
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+    // 「今日」の月日文字列（例: "5月31日"）
+    const todayStr = `${now.getMonth() + 1}月${now.getDate()}日`;
+
     const tagRes = await axios.get('https://anna-media.jp/archives/tag/horoscope', {
         timeout: 10000, headers: HEADERS,
     });
     const $tag = cheerio.load(tagRes.data);
-    const seen = new Set(); const articleUrls = [];
+
+    // タイトルと URL のペアを収集（順番を保持）
+    const seen = new Set();
+    const articles = []; // { href, title }
 
     $tag('a[href*="/archives/"]').each((_, el) => {
         const href  = ($tag(el).attr('href') || '').split('?')[0];
-        const title = $tag(el).text();
+        const title = $tag(el).text().trim();
         if (/\/archives\/\d+$/.test(href) && /\d+位/.test(title) && !seen.has(href)) {
             seen.add(href);
-            articleUrls.push(href);
+            articles.push({ href, title });
         }
     });
 
-    const urls = articleUrls.slice(0, 2);
+    if (articles.length < 2) return null;
+
+    // 最新の2件が今日公開（＝明日の運勢）かどうか確認
+    // タイトルに今日の日付が含まれていれば、2件スキップして昨日公開分を使う
+    const firstTitle = articles[0]?.title ?? '';
+    const startIdx = firstTitle.includes(todayStr) ? 2 : 0;
+
+    const urls = articles.slice(startIdx, startIdx + 2).map(a => a.href);
     if (urls.length === 0) return null;
 
-    const articles = await Promise.allSettled(
+    const fetched = await Promise.allSettled(
         urls.map(u => axios.get(u, { timeout: 10000, headers: HEADERS }))
     );
 
     const rankings = {};
-    for (const art of articles) {
+    for (const art of fetched) {
         if (art.status === 'fulfilled') parseAnnaArticle(art.value.data, rankings);
     }
 
